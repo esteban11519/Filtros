@@ -1,7 +1,5 @@
 import math
 import numpy as np
-from numpy.lib.arraypad import _view_roi
-from numpy.lib.polynomial import RankWarning
 import os
 import subprocess
 import ltspice
@@ -388,19 +386,174 @@ class Tools():
         except IOError:
             pass
 
+    def filtro(self,tipo,polinomio,omega_c,omega,omega_l,omega_u,L_c,L,Gr,RinORout,ordenPasaOrechazaBandas,f_min,f_max,puntosDecada,circuito,resultados,tiempoSimulacion):
+        resumenSimulacion="\n\nEste es la simulaci\243n que usted ingres\243\n\n"
+        if tipo=='LP':
+            resumenSimulacion+='Tipo: Filtro pasa bajas\n'
+        elif tipo=='HP':
+            resumenSimulacion+='Tipo: Filtro pasa altas\n'
+        elif tipo=='BP':
+            resumenSimulacion+='Tipo: Filtro pasa bandas\n'
+        else:
+            resumenSimulacion+='Tipo: Filtro rechaza bandas\n'
+
+        if polinomio=='B':
+            resumenSimulacion+='Polinomio: Butterworth'
+        else:
+            resumenSimulacion+='Polinomio: Chebyshev'
+
+        resumenSimulacion+='\nomega_c: '+str(omega_c)\
+        +'\nomega: '+str(omega)\
+        +'\nomega_l: '+str(omega_l)\
+        +'\nomega_u: '+str(omega_u)\
+        +'\nL_c: '+str(L_c)\
+        +'\nL: '+str(L)\
+        +'\nRizado en la banda pasante: '+str(Gr)\
+        +'\nResistencia de la fuente o de carga: '+str(RinORout)\
+        +'\norden del filtro pasa o rechaza bandas: '+str(ordenPasaOrechazaBandas)\
+        +'\nf_min: '+str(f_min)\
+        +'\nf_max: '+str(f_max)\
+        +'\nPuntos por decada: '+str(puntosDecada)\
+        +'\ncircuito: '+str(circuito)\
+        +'\nresultados: '+str(resultados)\
+        +'\nTiempo de simulaci\243n: '+str(tiempoSimulacion)+'\n\n'
+
+        print(resumenSimulacion)
+
+        
+        '''
+        tipo:
+            - Colocar 'LP' si un pasa bajas
+            - Colocar 'HP' si un pasa altas
+            - Colocar 'BP' Si un pasa bandas
+            - Colocar '' si un rechazabandas
+        
+        Polinomio: 
+            - Colocar 'B' si es un Butterworth
+            - Colocar '' si es un Chebyshev
+
+        omega_c:
+            Solo aplica para pasa bajas o altas
+            -Frecuencia angular [dB] de corte
+
+        omega:
+            Solo aplica para pasa bajas o altas
+            - Frecuencia en [rad/s] donde se atenua por lo menos L[dB]
+
+        omega_l:
+            Solo aplica para pasa bandas o rechazabandas
+            - Frecuencia de corte inferior [rad/s]
+
+        omega_u:
+            Solo aplica para pasa bandas o rechazabandas
+            - Frecuencia de corte superior [rad/s]
+        
+        L_c:
+            Solo aplica para pasa bajas o altas
+            - Atenuación en [dB] que sucede en omega_c
+
+        L:
+            Solo aplica para pasa bajas o altas
+            - Atenuación en [dB] en omega
+
+        Gr: 
+            Solo aplica para el tipo Chebyshev
+            - Rizado en la banda pasante pico-pico en [dB]
+        
+        RinORout: 
+            Resistencia de entrada o de la salida [Ohmios], suponiendo que son iguales
+        
+        ordenPasaOrechazaBandas:
+            Solo aplica para pasa bandas o rechazabandas
+            - Orden del filtro pasa o rechaza banda
+
+        Parámetros de simulación
+
+        f_min:
+            - Frecuencia mínima de simulación [Hz]
+        
+        f_max:
+            - Frecuencia máxima de simulación [Hz]
+        
+        puntosDecada:
+            - Número de puntos por década
+
+        circuito:
+            - Archivo para escribir el netlist, debe estár en .cir
+        
+        resultados:
+            - Archivo para guardar los resultados, debe ir en .raw
+
+        tiempoSimulacion:
+            - Tiempo de simulación
+        '''
+        print('Prueba tipo',tipo)
+        if tipo=='pasa-bajas' or tipo=='LP':
+            print('pasa-bajas')
+            if polinomio=='Butterworth' or polinomio=='B':
+                zita=self.zita_Butterworth(L_c)
+                n=self.n_Butterworth(omega,omega_c,zita,L)
+                coeficientes=self.gp_Butterworth_Rin_equal_out(n)
+            else:
+                m=self.m_Chebyshev(L,Gr,omega,omega_c)
+                coeficientes=self.gp_Chebyshev(m,Gr)
+
+            escalamiento=self.escalamiento_pasa_bajasoAltas('pasa-bajas',coeficientes,omega_c,RinORout,RinORout)
+            netlist=self.makeNetlistPasaBajasOAltas('pasa-bajas',escalamiento,f_min,f_max,puntosDecada,resultados)
+            
+            
+        elif tipo=='pasa-altas' or tipo== 'HP':
+            print('pasa-altas')
+            if polinomio=='Butterworth' or polinomio=='B':
+                zita=self.zita_Butterworth(L_c)
+                n=self.n_Butterworth(1/omega,1/omega_c,zita,L)
+                coeficientes=self.gp_Butterworth_Rin_equal_out(n)
+            else:
+                m=self.m_Chebyshev(L,Gr,1/omega,1/omega_c)
+                coeficientes=self.gp_Chebyshev(m,Gr)
+                
+            escalamiento=self.escalamiento_pasa_bajasoAltas('pasa-altas',coeficientes,omega_c,RinORout,RinORout)
+            netlist=self.makeNetlistPasaBajasOAltas('pasa-altas',escalamiento,f_min,f_max,puntosDecada,resultados)
+            
+        elif tipo=='pasa-bandas' or tipo=='BP':
+            print('pasa-bandas')
+            if polinomio=='Butterworth' or polinomio=='B':
+                coeficientes=self.gp_Butterworth_Rin_equal_out(ordenPasaOrechazaBandas)
+            else:
+                coeficientes=self.gp_Chebyshev(ordenPasaOrechazaBandas,Gr)
+            
+            netlist=self.makeNetlistPasaBandas(coeficientes,omega_u,omega_l,RinORout,f_min,f_max,puntosDecada,resultados)
+
+        else:
+            print('Stop-bandas')
+            if polinomio=='Butterworth'or polinomio=='B':
+                coeficientes=self.gp_Butterworth_Rin_equal_out(ordenPasaOrechazaBandas)
+            else:
+                coeficientes=self.gp_Chebyshev(ordenPasaOrechazaBandas,Gr)
+            
+            netlist=self.makeNetlistStopBandas(coeficientes,omega_u,omega_l,RinORout,f_min,f_max,puntosDecada,resultados)
+
+
+        self.escritura(netlist,circuito)
+        self.simular(circuito,tiempoSimulacion)
+        self.graficar(resultados)
+       
 if __name__ == '__main__':
     tool=Tools()
-    #tipo='pasa-altas'
+    tipo=''
+    polinomio='B'
     R_in=75 # Resistencia de entrada [Ohmios]
     R_out=75 # Resistencia de salida [Ohmios]
-    #omega_c=100e6*2*math.pi # Frecuencia de corte [rad/s]
-    #omega=25e6*2*math.pi  # Frecuencia con atenuación L [rad/s]
+    omega_c=100e6*2*math.pi # Frecuencia de corte [rad/s]
+    omega=25e6*2*math.pi  # Frecuencia con atenuación L [ras]
 
     omega_u=40e6*2*math.pi
     omega_l=10e6*2*math.pi
     
-    L=100 # Atenuación en [dB] en omega
-    Gr=0.1 # Rizado en el banda pasante [dB]
+    L_c=3 # Atenuación en [dB] en omega_c
+    L=5 # Atenuación en [dB] en omega
+    Gr=0.01 # Rizado en el banda pasante [dB]
+    ordenPasaOrechazaBandas=3 # Orden de un filtro pasa o rechaza bandas
 
     # Parámetros de simulacion
     f_min=100e3 #Límite inferior para simular
@@ -409,46 +562,8 @@ if __name__ == '__main__':
 
     resultados="resultados.raw"
     circuito='filtro.cir'
-    
-    #coeficientes=tool.gp_Butterworth_Rin_equal_out(3)
-    coeficientes=tool.gp_Chebyshev(3,Gr)
-    netlist=tool.makeNetlistStopBandas(coeficientes,omega_u,omega_l,R_in,f_min,f_max,puntosDecada,resultados)
-    #coeficientes=tool.gp_Chebyshev(3,Gr)
-    #netlist=tool.makeNetlistPasaBandas(coeficientes,omega_u,omega_l,R_in,f_min,f_max,puntosDecada,resultados)
-    tool.escritura(netlist,circuito)
-    tool.simular(circuito,3)
-    tool.graficar(resultados)
-    
-    # Chebyshev pasa altas
-
-    #m=tool.m_Chebyshev(L,Gr,1/omega,1/omega_c)
-    #coeficientes=tool.gp_Chebyshev(m,Gr)
-    #escamiento=tool.escalamiento_pasa_bajasoAltas(tipo,coeficientes,omega_c,R_in,R_out)
-    #netlist=tool.makeNetlistPasaBajasOAltas(tipo,escamiento,f_min,f_max,10000,resultados)
-    #tool.escritura(netlist,circuito)
-    #tool.simular(circuito,3)
-    #tool.graficar(resultados)
-
-    
-    #print('Done')
-
-
-
-    # Butterworth pasa bajas
-    #zita=tool.zita_Butterworth(3)
-    #n=tool.n_Butterworth(omega,omega_c,zita,L)
-    #coeficientes=tool.gp_Butterworth_Rin_equal_out(n)
-    #pasaBajas=tool.Butterworth_pasa_bajas(coeficientes,omega_c,R_in,R_out)
-    #data=tool.makeNetlistPasaBajas(pasaBajas,f_min,f_max,puntosDecada,resultados)
-    #tool.escritura(data,circuito)
-    #tool.simular(circuito,3)
-    #tool.graficar(resultados)
-
-    #print('m',tool.m_Chebyshev(15,3,1.3,1))
-    
-    #for i in range(1,8,1):
-    #    print(tool.gp_Chebyshev(i,3))
-
+    tiempoSimulacion=3
     
     
- 
+    tool.filtro(tipo,polinomio,omega_c,omega,omega_l,omega_u,L_c,L,Gr,R_in,ordenPasaOrechazaBandas,f_min,f_max,puntosDecada,circuito,resultados,tiempoSimulacion)
+     
