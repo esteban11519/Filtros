@@ -1,9 +1,9 @@
-import os 
-import math
-import subprocess
-import ltspice
-import matplotlib.pyplot as plt
-import numpy as np
+import os  # Para saber la dirección absoluta
+import math # Para cálculos matématicos
+import subprocess # Para crear subprocesos
+import ltspice # Extrae parámetros de archivos .raw
+import matplotlib.pyplot as plt # Grafica en python de manera parecida a MatLab
+import numpy as np # Permite hacer operaciones entre matrices o vectores
 
 
 class Tools():
@@ -107,7 +107,7 @@ class Tools():
         +"RL out 0 "+str(z_0)+"\n\n"\
         +".control\n"\
         +"ac dec "+str(n)+" "+str(f_min)+" "+str(f_max)+" \n"\
-        +"plot (vdb(out)-vdb(in))\n"\
+        +"*plot (vdb(out)-vdb(in))\n"\
         +"write "+os.getcwd()+'/'+guardarDatosEn+" all \n"\
         +".endc\n\n"\
         +".end"
@@ -174,6 +174,10 @@ class Tools():
         return netlist
 
     def simular(self,archivo,t):
+        '''
+        Archivo: Netlist en .cir
+        t: Tiempo de simulación en segundos
+        '''
         process = subprocess.Popen(['ngspice',os.getcwd()+'/'+archivo])
         try:
             print('Running in process', process.pid)
@@ -183,7 +187,12 @@ class Tools():
             process.kill()
             print("Done")
 
-    def graficar(self,archivo):
+    def graficar(self,archivo,filtro,f_infty):
+        if filtro=='Circuito_Pasa_Bajas'.lower():
+            titulo='Circuito pasa bajas con frecuencia de cero dB en '
+        else:
+            titulo='Circuito pasa altas con frecuencia de cero dB en '
+
         l = ltspice.Ltspice(os.getcwd()+'/'+archivo) 
         # Make sure that the .raw file is located in the correct path
         l.parse()
@@ -192,22 +201,28 @@ class Tools():
         V_out = abs( (l.get_data('V(out)')))
         H=20*np.log10(V_out)-20*np.log10(V_in)
         f=np.multiply(f,1e-6)
-
-        plt.semilogx(f, H,f,np.ones(len(H))*-3,f,np.ones(len(H))*-30)
-        plt.legend(['H','-3dB','-30dB'])
+        
+        #plt.figure()
+        plt.semilogx(f, H,f,np.ones(len(H))*-3,f,np.ones(len(H))*-10.3,f,np.ones(len(H))*-30)
+        plt.legend(['H','-3dB','-10,3 dB','-30dB'])
         plt.ylabel('Magnitud [dB]')
         plt.xlabel('frecuencia [MHz]')
+        #plt.title(titulo+str(f_infty)+' Hz')
+        #plt.xlim([60,100])
+        #plt.ylim([-2,2])
         plt.grid(True)
-        plt.xticks(np.concatenate((np.arange(10,100,step=10),np.arange(100,400,step=100))))
-        plt.show()
+        plt.xticks(np.concatenate((np.arange(10,100,step=10),np.arange(100,300,step=100))))
+        plt.savefig(os.getcwd()+'/'+filtro+'_'+str(f_infty)+'_Hz'+'.png')
+        #plt.show()
+        
 
-
-
-
-    def tipoFiltro(self,tipo,f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn):
+    def tipoFiltro(self,tipo,f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn,circuito,tiempoSimulacion):
         '''
+        tipo:
+            - Escribir: 'Circuito_Pasa_Bajas' si es un pasa bajas
+            - Escribir: 'Circuito_Pasa_Altas' si es un pasa altas
         f_c: frecuencia de corte
-        f_infty: frecuencia de 0 db
+        f_infty: frecuencia donde la constante de propagación en una sección T tiende a infinito.
         z_o: Impedancia nominal
         f_min: frecuencia mínima
         f_max: frecuencia máxima
@@ -216,36 +231,39 @@ class Tools():
         '''
         if tipo.lower()== 'Circuito_Pasa_Bajas'.lower():
             self.circuitoPasaBajas()
-            return self.makeNetlistPasaBajas(f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn)
+            netlist= self.makeNetlistPasaBajas(f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn)
         elif tipo.lower()== 'Circuito_Pasa_Altas'.lower():
             self.circuitoPasaAltas()
-            return self.makeNetlistPasaAltas(f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn)
+            netlist= self.makeNetlistPasaAltas(f_c,f_infty,z_o,f_min,f_max,n,guardarDatosEn)
         else: print('Elija otra opci\243n')
 
+        self.escritura(netlist,circuito)
+        self.simular(circuito,tiempoSimulacion)
+        self.graficar(guardarDatosEn,filtro,f_infty)
         
 
 if __name__ == '__main__':
-    
-    # Se ingreasan los parámetros
-    filtro='Circuito_Pasa_Bajas'
-    f_c=90E6 #Frecuencia de resonancia
-    f_infty=210E6 #Atenuacion total
-    z_0=75 #Impedancia caracteristica
-    f_min=10e6 #Límite inferior para simular
-    f_max=300e6 #Límite superior para simular
-    n=10000 #Número de puntos por década
-    tiempoSimulacion=3 # Tiempo en el que dura toda la simulación
+    for step in range(91,100,1):
+        
+        # Se ingreasan los parámetros
+        filtro='Circuito_Pasa_Bajas'
+        f_c=90E6 #Frecuencia de corte [Hz]
+        #f_infty=(step)*1E6 #frecuencia [Hz] donde la constante de propagación en una sección T tiende a infinito.
+        f_infty=(112.5)*1E6 
+        z_0=75 #Impedancia caracteristica [Omh]
+        f_min=10e6 #Límite inferior para simular [Hz]
+        f_max=300e6 #Límite superior para simular [Hz]
+        n=10000 #Número de puntos por década
+        tiempoSimulacion=3 # Tiempo en el que dura toda la simulación [s]
 
-    guardarDatosEn="resultados.raw" #Archivo .raw
-    circuito='pasa_bajas.cir' #Netlist para ngspice
+        guardarDatosEn="resultados.raw" #Archivo .raw
+        circuito='pasa_bajas.cir' #Netlist para ngspice
+        
+        # No se modifica
+        tools=Tools()
+        tools.tipoFiltro(filtro,f_c,f_infty,z_0,f_min,f_max,n,guardarDatosEn,circuito,tiempoSimulacion)
+        
     
-    # No se modifica
-    tools=Tools()
-    netlist=tools.tipoFiltro(filtro,f_c,f_infty,z_0,f_min,f_max,n,guardarDatosEn)
-    tools.escritura(netlist,circuito)
-    tools.simular(circuito,tiempoSimulacion)
-    tools.graficar(guardarDatosEn)
-  
 
 
   
