@@ -1,6 +1,8 @@
 import numpy as np
 import math
 import os
+import time
+import signal
 import subprocess
 import ltspice
 import matplotlib.pyplot as plt
@@ -20,20 +22,13 @@ class Tool():
         except IOError:
             pass
 
-    def simular(self,archivo,t):
+    def simular(self,archivo):
         '''
-        Esta funcíon permite simular el netlist en ngspice
+        Esta funcíon permite simular el netlist en ngspice (Se cierra al terminar la simulación)
         Archivo: Netlist en .cir
-        t: Tiempo de simulación en segundos
         '''
-        process = subprocess.Popen(['ngspice',archivo])
-        try:
-            print('Running in process', process.pid)
-            process.wait(timeout=t) #En segundos
-        except subprocess.TimeoutExpired:
-            print('Timed out - killing', process.pid)
-            process.kill()
-            print("Done")
+        subprocess.run(['ngspice',archivo])
+        
 
     def RvirtualTipoT(self,Rs,RL,Q):
         '''
@@ -276,6 +271,7 @@ class Tool():
         +"ac dec "+str(puntosDecada)+" "+str(f_min)+" "+str(f_max)+" \n"\
         +"*plot (vdb(out)-vdb(in))\n"\
         +"write "+os.getcwd()+'/'+resultados+" all \n"\
+        +"quit\n"\
         +".endc\n\n"\
         +".end"
 
@@ -479,7 +475,6 @@ if __name__ == '__main__':
     puntosDecada=100000 # Puntos por década
     resultados='resultados.raw'
     circuito='circuito.cir'
-    tiempoSimulacion=5 # Tiempo de simulación [s]
     
     
     # Se realizan los cálculos (No modificar)
@@ -490,5 +485,5 @@ if __name__ == '__main__':
     netlist=tool.netlistTipoTAndPi(omega_o,Coe,Xs1_m,Xs2_m,tipoRed,f_min,f_max,puntosDecada,resultados)
     tool.escritura(netlist,circuito)
     
-    tool.simular(circuito,tiempoSimulacion)
+    tool.simular(circuito)
     tool.graficar(resultados,Rs,RL)
